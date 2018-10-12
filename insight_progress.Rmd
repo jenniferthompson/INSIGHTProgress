@@ -1,0 +1,266 @@
+---
+title: "Study Progress"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    theme: readable
+    logo: Graphics/insight-logo-horizontal-cropped.png
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(plotly)
+library(highcharter)
+library(treemap)
+library(knitr)
+library(scales)
+library(glue)
+library(googleVis)
+
+source("R/datamgmt_progress.R")
+source("R/plot_asmts_comp.R")
+
+mosaic_pal <- c(
+  ## Row 1, starting with leftmost diamond
+  "blue1" = "#283C72", "blue2" = "#243E8B", "blue3" = "#0477BF",
+  "green1" = "#8EC63E", "green2" = "#3BB547",
+  ## Row 2
+  "blue4" = "#24ADCD", "blue5" = "#0976B7", "blue6" = "#23AEDD",
+  "green3" = "#3BB54A", "green4" = "#1A653E",
+  ## Row 3
+  "orange1" = "#E76A32", "orange2" = "#F69723", "orange3" = "#FA961F",
+  "orange4" = "#FBCD93", "ecru" = "#FFF8DE",
+  ## Row 4
+  "red1" = "#D71A60", "red2" = "#F27074", "red3" = "#EC835F",
+  "gray1" = "#E4DAD1", "gray2" = "#F7F5EB",
+  ## Row 5
+  "red4" = "#C0232C", "red5" = "#EE1C27", "red6" = "#FF686D",
+  "red7" = "#F8D4D1", "cream" = "#FEFEFC"
+)
+
+## Function to get hex for a specific element
+mosaic_col <- function(hex){ as.character(mosaic_pal[hex]) }
+
+## Colors for assessment plots
+asmt_values = c(
+  "Excellent" = mosaic_col("green4"),
+  "Okay" = mosaic_col("orange3"),
+  "Uh-oh" = mosaic_col("red5")
+)
+
+# ## Named vector of colors for exclusions
+# exc_colors <- c(
+#   ">5 hospital days in last 30" = mosaic_col("blue1"),
+#   "Severe neurologic injury" = mosaic_col("blue3"),
+#   "Death within 24h/hospice" = mosaic_col("blue4"),
+#   "Rapidly resolving organ failure" = mosaic_col("blue5"),
+#   "BMI > 50" = mosaic_col("red1"),
+#   "Substance abuse, etc" = mosaic_col("red2"),
+#   "Blind, deaf, English" = mosaic_col("red3"),
+#   "Prisoner" = mosaic_col("red4"),
+#   "Inability to live independently" = mosaic_col("red5"),
+#   "Homeless" = mosaic_col("red6"),
+#   "Patient/surrogate refusal" = mosaic_col("green4"),
+#   "No surrogate within 72h" = mosaic_col("green1"),
+#   "Attending refusal" = mosaic_col("green3"),
+#   ">72h eligibility prior to screening" = mosaic_col("green4"),
+#   "Lives >150 miles from VUMC" = mosaic_col("orange1"),
+#   "Study with no co-enrollment" = mosaic_col("orange2"),
+#   "Other" = mosaic_col("orange3")
+# )
+
+## Manually set width, height for screening/enrollment over time plots
+screenplot_wd <- 640
+screenplot_ht <- 325
+
+```
+
+Screening & Enrollment
+=====================================
+
+Column {data-width=60%}
+-----------------------------------------------------------------------
+
+### Patients Screened, Approached, and Enrolled
+
+```{r nodate_ids}
+nodate_ids <- unique(c(exc_id_nodate)) #, enroll_id_nodate))
+
+nodate_statement <- ifelse(
+  length(nodate_ids > 0),
+  paste(
+    "These IDs have no exclusion/enrollment date entered and are not included:",
+    paste(nodate_ids, collapse = "; ")
+  ),
+  ""
+)
+
+```
+
+`r nodate_statement`
+
+```{r screening}
+## Want figure to start in November 2017
+screening_myears <- unique(screening_summary$myear)
+screening_myears_num <- 1:length(screening_myears)
+names(screening_myears_num) <- screening_myears
+
+## X axis labels: character versions of unique months of enrollment
+## Applies to both screening and exclusion charts
+screening_xlabs <- exc_over_time %>%
+    dplyr::select(myear, myear_char) %>%
+  distinct() %>%
+  pull(myear_char)
+
+## Which months to use on X axes? (After a year of enrollment, axis labels
+## getting crowded)
+use_xlabs <- seq(1, length(screening_xlabs), 2)
+
+screening_summary <- screening_summary %>%
+  mutate(myear_num = screening_myears_num[myear])
+
+x_screen <- list(
+  tickvals = as.numeric(screening_myears_num)[use_xlabs],
+  ticktext = screening_xlabs[use_xlabs],
+  title = ""
+)
+y <- list(title = "")
+
+screen_plotly <- plot_ly(
+  data = screening_summary,
+  x = ~ myear_num,
+  y = ~ Screened,
+  type = "bar",
+  name = "Screened",
+  color = I("#571705"),
+  alpha = 0.85,
+  hoverinfo = "text",
+  text = ~ sprintf("%s, Screened: %s", myear_char, Screened)
+) %>%
+  add_bars(
+    y = ~ Approached,
+    name = "Approached",
+    color = I("#886407"),
+    hoverinfo = "text",
+    text = ~ sprintf("%s, Approached: %s", myear_char, Approached)
+  ) %>%
+  add_bars(
+    y = ~ Enrolled,
+    name = "Enrolled",
+    color = I("#315705"),
+    hoverinfo = "text",
+    text = ~ sprintf("%s, Enrolled: %s", myear_char, Enrolled)
+  )
+
+screen_plotly %>%
+  layout(legend = list(x = 0, y = 0.95, bgcolor='transparent'),
+         xaxis = x_screen, yaxis = y)
+
+```
+
+### Study Exclusions (% of All Patients Excluded)
+
+```{r exclusions_over_time}
+## plotly needs x value to be numeric to sort properly?
+exc_myears <- sort(unique(exc_over_time$myear))
+exc_myears_num <- 1:length(exc_myears)
+names(exc_myears_num) <- exc_myears
+
+exc_over_time <- exc_over_time %>%
+  mutate(myear_num = exc_myears_num[myear])
+
+x_exc <- list(tickvals = as.numeric(exc_myears_num)[use_xlabs],
+              ticktext = screening_xlabs[use_xlabs],
+              title = "")
+y_exc <- list(tickvals = seq(0, 100, 20),
+              ticktext = paste0(seq(0, 100, 20), "%"),
+              title = "Percent of Exclusions")
+
+exc_plotly <- plot_ly(
+  data = exc_over_time,
+  x = ~ myear_num,
+  y = ~ Percent,
+  type = "scatter",
+  mode = "lines+markers",
+  color = ~ Reason,
+  # colors = exc_colors,
+  alpha = 0.6,
+  hoverinfo = "text",
+  text = ~ sprintf("%s, %s: %s%%", myear_char, Reason, Percent)
+)
+
+exc_plotly %>%
+  layout(showlegend = FALSE,
+         xaxis = x_exc,
+         yaxis = y_exc)
+
+```
+
+Column {data-width=40%}
+-----------------------------------------------------------------------
+
+### Cumulative Enrollment as of `r format(Sys.Date(), "%B %d, %Y")` {data-height=40%}
+
+```{r enrollment}
+screening_statement <- sprintf(
+  "We have screened %s patients; %s%% were excluded and %s%% approached. Of those approached, %s%% refused consent and %s%% were enrolled.",
+  format(n_screened, big.mark = ","),
+  round(pct_excluded*100),
+  round(pct_approached*100),
+  round(pct_refused*100),
+  round(pct_enrolled*100)
+)
+
+enroll_gauge <- gauge(
+  value = n_enrolled,
+  min = 0,
+  max = n_goal,
+  sectors = gaugeSectors(colors = "#866407"),
+  label = "patients"
+)
+
+enroll_gauge
+
+```
+<br>
+`r screening_statement`
+
+### Cumulative Exclusions (Total: `r format(nrow(exc_df), big.mark = ",")`) {data-height=60%}
+
+```{r exclusions_cumulative}
+tm_exc <- treemap(dtf = exc_cumul,
+                  index = c("reason_type", "Reason"),
+                  vSize = "n_reason",
+                  type = "index",
+                  title = "",
+                  algorithm = "squarified",
+                  palette = c("#571705", "#455705", "#054557"),
+                  draw = FALSE)
+
+hc_tm_exc <- hctreemap(
+  tm_exc,
+  allowDrillToNode = TRUE,
+  layoutAlgorithm = "squarified",
+  levels = list(levelIsConstant = "false"),
+  dataLabels = list(style = list(color = "white",
+                                 textOutline = "0px contrast",
+                                 fontSize = "12px"))
+)
+
+hc_tm_exc
+
+```
+
+Study & Technical Info
+=====================================
+
+INSIGHT-ICU is funded by the National Institutes of Health. Please see our
+listing on [clinicaltrials.gov](https://clinicaltrials.gov/ct2/show/NCT03098459).
+
+This dashboard uses `r devtools::session_info()$platform$version`. Packages:
+
+```{r}
+DT::datatable(devtools::session_info()$packages)
+
+```
