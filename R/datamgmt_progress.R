@@ -123,7 +123,7 @@ pct_excluded <- 1 - pct_approached
 pct_refused <- mean(subset(screening_combine, Approached)$Refused)
 n_enrolled <- sum(screening_combine$Enrolled)
 pct_enrolled <- mean(subset(screening_combine, Approached)$Enrolled)
-n_goal <- 312
+n_goal <- 900
 
 ## -- Line chart for exclusion percentages over time ---------------------------
 ## Create long-format data set of all exclusions, one row each
