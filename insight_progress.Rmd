@@ -49,26 +49,26 @@ asmt_values = c(
   "Uh-oh" = mosaic_col("red5")
 )
 
-# ## Named vector of colors for exclusions
-# exc_colors <- c(
-#   ">5 hospital days in last 30" = mosaic_col("blue1"),
-#   "Severe neurologic injury" = mosaic_col("blue3"),
-#   "Death within 24h/hospice" = mosaic_col("blue4"),
-#   "Rapidly resolving organ failure" = mosaic_col("blue5"),
-#   "BMI > 50" = mosaic_col("red1"),
-#   "Substance abuse, etc" = mosaic_col("red2"),
-#   "Blind, deaf, English" = mosaic_col("red3"),
-#   "Prisoner" = mosaic_col("red4"),
-#   "Inability to live independently" = mosaic_col("red5"),
-#   "Homeless" = mosaic_col("red6"),
-#   "Patient/surrogate refusal" = mosaic_col("green4"),
-#   "No surrogate within 72h" = mosaic_col("green1"),
-#   "Attending refusal" = mosaic_col("green3"),
-#   ">72h eligibility prior to screening" = mosaic_col("green4"),
-#   "Lives >150 miles from VUMC" = mosaic_col("orange1"),
-#   "Study with no co-enrollment" = mosaic_col("orange2"),
-#   "Other" = mosaic_col("orange3")
-# )
+## Named vector of colors for exclusions
+## Treemap palette: c("#571705", "#455705", "#054557")
+## Individual exclusions will be variations on that palette
+exc_colors <- c(
+  ## Informed consent
+  ">72h eligibility prior to screening" = "#6f1d06",
+  "No surrogate within 72h" = "#571705",
+  "Patient/surrogate refusal" = "#872408",
+  "Research leadership refusal" = "#9f2a09",
+  ## Other exclusions
+  "Death within 24h/hospice" = "#455705",
+  "Lives >200 miles from VUMC" = "#586f06",
+  "Other" = "#6b8708",
+  ## Patient characteristics
+  "Blind, deaf, English" = "#021f27",
+  "Homeless" = "#04323f",
+  "Prisoner" = "#054557",
+  "Severe cognitive/neuro disorder" = "#06586f",
+  "Substance abuse, psych disorder" = "#086b87"
+)
 
 ## Manually set width, height for screening/enrollment over time plots
 screenplot_wd <- 640
@@ -184,7 +184,7 @@ exc_plotly <- plot_ly(
   type = "scatter",
   mode = "lines+markers",
   color = ~ Reason,
-  # colors = exc_colors,
+  colors = exc_colors,
   alpha = 0.6,
   hoverinfo = "text",
   text = ~ sprintf("%s, %s: %s%%", myear_char, Reason, Percent)
