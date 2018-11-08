@@ -212,6 +212,14 @@ screening_statement <- sprintf(
   round(pct_enrolled*100)
 )
 
+casemix_statement <- glue(
+  "Of the {n_enrolled} patients, ",
+  "{pct_blunt} ({n_blunt}) experienced blunt trauma; ",
+  "{pct_pene} ({n_pene}) experienced penetrating trauma; ",
+  "{pct_burn} ({n_burn}) experienced burns; and ",
+  "{pct_tbi} ({n_tbi}) experienced TBI."
+)
+
 enroll_gauge <- gauge(
   value = n_enrolled,
   min = 0,
@@ -225,6 +233,8 @@ enroll_gauge
 ```
 <br>
 `r screening_statement`
+<br><br>
+`r casemix_statement`
 
 ### Cumulative Exclusions (Total: `r format(nrow(exc_df), big.mark = ",")`) {data-height=60%}
 

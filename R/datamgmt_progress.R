@@ -125,6 +125,28 @@ n_enrolled <- sum(screening_combine$Enrolled)
 pct_enrolled <- mean(subset(screening_combine, Approached)$Enrolled)
 n_goal <- 900
 
+## Case mix: How many enrolled patients had...
+## - Blunt trauma
+## - Penetrating trauma
+## - Burn
+## - TBI
+n_blunt <- sum(inhosp_df$trauma_blunt_enr == "Yes", na.rm = TRUE)
+pct_blunt <- scales::percent(
+  mean(inhosp_df$trauma_blunt_enr == "Yes", na.rm = TRUE)
+)
+n_pene <- sum(inhosp_df$trauma_penetrate_enr == "Yes", na.rm = TRUE)
+pct_pene <- scales::percent(
+  mean(inhosp_df$trauma_penetrate_enr == "Yes", na.rm = TRUE)
+)
+n_burn <- sum(inhosp_df$burn_enr == "Yes", na.rm = TRUE)
+pct_burn <- scales::percent(
+  mean(inhosp_df$burn_enr == "Yes", na.rm = TRUE)
+)
+n_tbi <- sum(inhosp_df$tbi_enr == "Yes", na.rm = TRUE)
+pct_tbi <- scales::percent(
+  mean(inhosp_df$tbi_enr == "Yes", na.rm = TRUE)
+)
+
 ## -- Line chart for exclusion percentages over time ---------------------------
 ## Create long-format data set of all exclusions, one row each
 exc_df_long <- exc_df %>%
