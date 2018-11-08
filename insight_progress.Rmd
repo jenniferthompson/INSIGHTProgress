@@ -213,7 +213,7 @@ screening_statement <- sprintf(
 )
 
 casemix_statement <- glue(
-  "Of the {n_enrolled} patients, ",
+  "Of the {n_enrolled} enrolled, ",
   "{pct_blunt} ({n_blunt}) experienced blunt trauma; ",
   "{pct_pene} ({n_pene}) experienced penetrating trauma; ",
   "{pct_burn} ({n_burn}) experienced burns; and ",
@@ -260,6 +260,114 @@ hc_tm_exc <- hctreemap(
 
 hc_tm_exc
 
+```
+
+In-Hospital Phase{data-orientation=rows}
+================================================================================
+
+Row
+--------------------------------------------------------------------------------
+```{r ph_prep}
+## -- Proportion of full batteries completed -----------------------------------
+pct_surrogate_comp <-
+  round(mean(all_enrolled$ph_surrogate_comp, na.rm = TRUE) * 100)
+pct_caregiver_comp <-
+  round(mean(all_enrolled$ph_caregiver_comp, na.rm = TRUE) * 100)
+
+```
+
+### Surrogate %
+
+```{r ph_surrogate}
+valueBox(
+  value = paste0(pct_surrogate_comp, "%"),
+  caption =
+    "fully completed pre-hospital questionnaires<br>(General, basic/IADLs, NIDA, life space, employment, income, grit, BDI)",
+  color = ifelse(
+    pct_surrogate_comp < 80, mosaic_col("orange3"), mosaic_col("green3")
+  ),
+  icon = "ion-heart"
+)
+
+```
+
+### Caregiver %
+
+```{r ph_caregiver}
+valueBox(
+  value = paste0(pct_caregiver_comp, "%"),
+  caption =
+    "fully completed caregiver questionnaires<br>(Zarit, Memory & Behavior)",
+  color = ifelse(
+    pct_caregiver_comp < 80, mosaic_col("orange3"), mosaic_col("green3")
+  ),
+  icon = "ion-heart"
+)
+
+```
+
+Row
+--------------------------------------------------------------------------------
+### Specimen Log Compliance (% of Patients Eligible)
+```{r specimen_compliance}
+## Add text for tooltips
+specimen_df$htext <- glue::glue_data(
+  specimen_df,
+  "{Day}, {Color}: {scales::percent(Compliance)}"
+)
+specimen_plot <- ggplot(
+  data = specimen_df,
+  aes(group = Color, x = Day, y = Compliance, text = htext)
+) +
+  geom_bar(aes(fill = Color), position = "dodge", stat = "identity") +
+  scale_y_continuous(limits = c(0, 1),
+                     breaks = seq(0, 1, 0.5),
+                     label = scales::percent) +
+  # scale_fill_manual(values = c(mosaic_col("blue3"), "#5F0395"), guide = FALSE) +
+  scale_alpha_manual(values = c(0.65, 0.85)) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        axis.title = element_blank(),
+        axis.text = element_text(size = 10),
+        panel.background = element_rect(fill = NA, color = "gray80"),
+        panel.spacing = unit(2, "lines"))
+x <- y <- list(title = NULL)
+specimen_plot %>%
+  ggplotly(tooltip = "text") %>%
+  layout(xaxis = x, yaxis = y)
+
+```
+
+### Current In-Hospital Status
+```{r current_status}
+## List of patients currently in hospital
+pts_inhosp <- subset(all_enrolled, inhosp_status == "Still in hospital")$id
+pts_inhosp_text <- ifelse(length(pts_inhosp) == 0, "None",
+                          paste0(pts_inhosp, collapse = "; "))
+tm_status <- treemap(
+  dtf = status_count,
+  index = c("inhosp_status"),
+  vSize = "n_status",
+  type = "index",
+  title = "",
+  algorithm = "squarified",
+  palette = mosaic_pal[c("blue3", "red1", "orange1", "green2")],
+  draw = FALSE
+)
+hc_tm_status <- hctreemap(
+  tm_status,
+  allowDrillToNode = TRUE,
+  layoutAlgorithm = "squarified",
+  levels = list(levelIsConstant = "false"),
+  dataLabels = list(style = list(color = "white",
+                                 textOutline = "0px contrast",
+                                 fontSize = "12px"))
+) %>%
+  hc_subtitle(
+    text = paste("Patients currently in hospital:", pts_inhosp_text),
+    align = "left"
+  )
+hc_tm_status
 ```
 
 Study & Technical Info

@@ -216,212 +216,197 @@ exc_cumul <- exc_df_long %>%
            TRUE ~ "Other exclusions"
          ))
 
-# ################################################################################
-# ## Phase I (In-Hospital)
-# ################################################################################
-# 
-# ## -- Currently: died/withdrew in hospital, discharged, still in hospital ------
-# ## Get IDs for anyone with no enrollment date entered
-# enroll_id_nodate <- inhosp_df %>%
-#   filter(redcap_event_name == "Enrollment /Trial Day 1" & is.na(enroll_date)) %>%
-#   pull(id)
-# 
-# all_enrolled <- inhosp_df %>%
-#   ## Restrict to patients with an enrollment date entered
-#   filter(
-#     redcap_event_name == "Enrollment /Trial Day 1" & !is.na(enroll_date)
-#   ) %>%
-#   mutate(inhosp_status = factor(ifelse(!is.na(hospdis_date), 1,
-#                                 ifelse(!is.na(death_date), 2,
-#                                 ifelse(!is.na(studywd_date), 3, 4))),
-#                                 levels = 1:4,
-#                                 labels = c("Discharged alive",
-#                                            "Died in hospital",
-#                                            "Withdrew in hospital",
-#                                            "Still in hospital")))
-#   
-# status_count <- all_enrolled %>%
-#   group_by(inhosp_status) %>%
-#   summarise(n_status = n())
-# 
-# ## -- Completion of pre-hospital surrogate, caregiver batteries ----------------
-# ## Surrogate battery: General questions, PASE, basic/IADLs, life space,
-# ##   employment questionnaire, AUDIT, IQCODE; BDI, if enrolled >= 6/19/2018
-# ## Caregiver battery: Zarit, memory/behavior checklist
-# ## "Complete" = every section fully or partially completed
-# surrogate_compvars <- paste0(
-#   c("gq", "pase", "adl", "ls", "emp", "audit", "iqcode", "bdi"),
-#   "_comp_ph"
-# )
-# caregiver_compvars <- paste0(c("zarit", "memory"), "_comp_ph")
-# 
-# all_enrolled <- all_enrolled %>%
-#   mutate_at(
-#     vars(one_of(c(surrogate_compvars, caregiver_compvars))),
-#     funs(!is.na(.) & str_detect(., "^Yes"))
-#   ) %>%
-#   ## BDI was not included in the battery until June 19, 2018; set these to
-#   ##  missing, rather than FALSE
-#   mutate(
-#     bdi_comp_ph = if_else(enroll_date < as.Date("2018-06-19"), NA, bdi_comp_ph)
-#   ) %>%
-#   mutate(
-#     ph_surrogate_comp = case_when(
-#       enroll_date < as.Date("2018-06-19") ~
-#         rowSums(.[, setdiff(surrogate_compvars, "bdi_comp_ph")]) ==
-#           length(surrogate_compvars) - 1,
-#       TRUE ~ rowSums(.[, surrogate_compvars]) == length(surrogate_compvars)
-#     ),
-#     ph_caregiver_comp =
-#       rowSums(.[, caregiver_compvars]) == length(caregiver_compvars)
-#   )
-# 
-# ## -- Specimen log: compliance = >0 tubes drawn on days 1, 3, 5, discharge -----
-# ## Get "proper" study *dates* for each ID
-# study_dates <- tibble(
-#   study_date =
-#     map(pull(all_enrolled, enroll_date), ~ seq(., by = 1, length.out = 29)) %>%
-#     flatten_int() %>%
-#     as.Date(origin = "1970-1-1")
-# )
-# 
-# ## Create "dummy" data frame with ID, study event, study day, study date up to
-# ## day 30 for each patient
-# timeline_df <- tibble(
-#   id = rep(sort(unique(all_enrolled$id)), each = 29),
-#   study_day = rep(1:29, length(unique(all_enrolled$id)))
-# ) %>%
-#   left_join(subset(all_enrolled,
-#                    select = c(id, enroll_date, death_date, hospdis_date,
-#                               studywd_date)),
-#             by = "id") %>%
-#   bind_cols(study_dates) %>%
-#   ## Add "status" for each day:
-#   ##  - deceased
-#   ##  - discharged
-#   ##  - withdrawn
-#   ##  - in hospital
-#   ## With additional indicator for "transition day", or days on which patients
-#   ## died, were discharged, or withdrew. These days may or may not have data
-#   ## collected (eg, if patient died in evening, data may have been collected,
-#   ## but if patient died in morning, likely that no data was collected).
-#   mutate(
-#     redcap_event_name = case_when(
-#       study_day == 1  ~ "Enrollment /Trial Day 1",
-#       study_day == 29 ~ "Discharge Day",
-#       TRUE            ~ paste("Trial Day", study_day)
-#     ),
-#     transition_day = (!is.na(death_date) & study_date == death_date) |
-#       (!is.na(studywd_date) & study_date == studywd_date) |
-#       (!is.na(hospdis_date) & study_date == hospdis_date),
-#     study_status = factor(
-#       ifelse(!is.na(death_date) & study_date >= death_date, 4,
-#       ifelse(!is.na(hospdis_date) & study_date >= hospdis_date, 3,
-#       ifelse(!is.na(studywd_date) & study_date >= studywd_date, 2, 1))),
-#       levels = 1:4,
-#       labels = c("In hospital", "Withdrawn", "Discharged", "Deceased"))
-#   )
-#   
-# ## Data set for specimens: merge specimen variables onto study days 1, 3, 5, 29
-# ## (for specimen log, 29 = day of discharge, even if patient was discharged
-# ## earlier)
-# specimen_df <- timeline_df %>%
-#   dplyr::select(
-#     id, redcap_event_name, study_day, study_status, transition_day
-#   ) %>%
-#   left_join(
-#     dplyr::select(inhosp_df, id, redcap_event_name, blue_drawn, purple_drawn),
-#     by = c("id", "redcap_event_name")
-#   ) %>%
-#   ## Restrict to:
-#   ## - Days 1, 3, 5, if patient was still hospitalized at least part of the day
-#   ## - Day 29 (d/c event) if pt still hospitalized or had been discharged alive
-#   ## If patient was discharged on day 7, still had "discharge" specimens entered
-#   ## on discharge event.
-#   filter(
-#     (study_day %in% c(1, 3, 5) &
-#        (study_status == "In hospital" | transition_day)) |
-#       (study_day == 29 & study_status %in% c("In hospital", "Discharged"))
-#   ) %>%
-#   ## Reshape to long format, with one record per day/tube color
-#   dplyr::select(id, study_day, blue_drawn, purple_drawn) %>%
-#   gather(key = Color, value = drawn, blue_drawn:purple_drawn) %>%
-#   mutate(
-#     Color = str_replace(Color, "\\_drawn", ""),
-#     ## Compliance: At least one tube drawn
-#     compliant = !is.na(drawn) & drawn > 0,
-#     ## Factor version of study_day
-#     Day = factor(
-#       case_when(
-#         study_day == 1 ~ 1,
-#         study_day == 3 ~ 2,
-#         study_day == 5 ~ 3,
-#         TRUE           ~ 4
-#       ),
-#       levels = 1:4,
-#       labels = c("Day 1", "Day 3", "Day 5", "Discharge")
-#     )
-#   ) %>%
-#   ## Blue tubes are not drawn on days 3/5; keeping them in was causing
-#   ##  tooltip issues
-#   filter(!(Color == "blue" & study_day %in% c(3, 5))) %>%
-#   ## Summarize % compliance by study day, tube color
-#   group_by(Day, Color) %>%
-#   summarise(
-#     Compliance = mean(compliant, na.rm = TRUE)
-#   ) %>%
-#   ungroup() 
-# 
-# ## -- Accelerometer info -------------------------------------------------------
-# 
-# ## Patient-days
-# ## On what percentage of patient-days has the accelerometer been removed?
-# n_hosp_days <- sum(!is.na(inhosp_df$daily_date))
-# 
-# ## Get number of days accelerometer was worn
-# n_accel_days <- with(inhosp_df, sum(coord_ever == "Yes", na.rm = TRUE))
-# 
-# ## Get number of days accelerometer was removed at least once
-# n_accel_rm <- sum(inhosp_df$bed_device_num > 0, na.rm = TRUE)
-# 
-# ## Patients with device permanently removed *prior to 48h before discharge*
-# pts_accel_rm <- inhosp_df %>%
-#   dplyr::select(id, daily_date, starts_with("bed_remove_why")) %>%
-#   right_join(subset(all_enrolled, select = c(id, hospdis_date))) %>%
-#   gather(key = time, value = reason, bed_remove_why_1:bed_remove_why_8) %>%
-#   filter(!is.na(reason)) %>%
-#   ## Indicator for whether device was permanently removed on day of or just
-#   ## prior to discharge (should not count for study monitoring purposes)
-#   mutate(
-#     days_before_discharge =
-#       as.numeric(difftime(hospdis_date, daily_date, units = "days")),
-#     prep_discharge =
-#       reason == "Permanent discontinuation" & days_before_discharge %in% 0:1,
-#     reason_mod = case_when(
-#       reason == "Permanent discontinuation" & prep_discharge ~
-#         "Removed within a day of hospital discharge",
-#       TRUE ~ reason
-#     )
-#   ) %>%
-#   unique()
-# 
-# n_accel_permrm <- sum(pts_accel_rm$reason_mod == "Permanent discontinuation")
-# 
-# ## Summarize reasons for device removal
-# sum_accel_rm <- pts_accel_rm %>%
-#   group_by(reason_mod) %>%
-#   count() %>%
-#   arrange(desc(n))
-# 
-# ## -- Number of times/day accelerometer was removed ----------------------------
-# accel_rm_df <- inhosp_df %>%
-#   filter(!is.na(daily_date)) %>%
-#   dplyr::select(id, daily_date, bed_device_num) %>%
-#   separate(daily_date, into = c("year", "month", "day"), sep = "-") %>%
-#   mutate(mabb = month.abb[as.numeric(month)],
-#          myear = paste(year, month, sep = "-"),
-#          myear_char = ifelse(mabb == "Mar", paste(mabb, year), mabb))
-# 
+################################################################################
+## Phase I (In-Hospital)
+################################################################################
+
+## -- Currently: died/withdrew in hospital, discharged, still in hospital ------
+## Get IDs for anyone with no enrollment date entered
+enroll_id_nodate <- inhosp_df %>%
+  filter(redcap_event_name == "Enrollment /Study Day 1", is.na(enroll_date)) %>%
+  pull(id)
+
+all_enrolled <- inhosp_df %>%
+  ## Restrict to patients with an enrollment date entered
+  filter(
+    redcap_event_name == "Enrollment /Study Day 1", !is.na(enroll_date)
+  ) %>%
+  mutate(
+    inhosp_status = factor(
+      case_when(
+        !is.na(hospdis_date) ~ 1,
+        !is.na(death_date)   ~ 2,
+        !is.na(studywd_date) ~ 3,
+        TRUE                 ~ 4
+      ),
+      levels = 1:4,
+      labels = c("Discharged alive", "Died in hospital",
+                 "Withdrew in hospital", "Still in hospital")
+    )
+  )
+
+status_count <- all_enrolled %>%
+  group_by(inhosp_status) %>%
+  summarise(n_status = n())
+
+## -- Completion of pre-hospital surrogate, caregiver batteries ----------------
+## Surrogate battery: General questions, basic/IADLs, NIDA, life space,
+##   employment questionnaire, income, grit, BDI
+## Caregiver battery: Attitude toward donation, Zarit, memory/behavior checklist
+## "Complete" = every section fully or partially completed
+surrogate_compvars <- c(
+  paste0(
+    c("gq", "adl", "nida", "ls", "emp", "income", "grit", "bdi"), "_comp_ph"
+  ),
+  "attitude_comp_sur"
+)
+caregiver_compvars <- c(
+  paste0(c("zarit", "memory"), "_comp_ph")
+)
+
+all_enrolled <- all_enrolled %>%
+  mutate_at(
+    vars(one_of(c(surrogate_compvars, caregiver_compvars))),
+    funs(!is.na(.) & str_detect(., "^Yes"))
+  ) %>%
+  mutate(
+    ph_surrogate_comp =
+      rowSums(.[, surrogate_compvars]) == length(surrogate_compvars),
+    ph_caregiver_comp =
+      rowSums(.[, caregiver_compvars]) == length(caregiver_compvars)
+  )
+
+## -- Specimen log: compliance = >0 tubes drawn on days 1, 3, 5, discharge -----
+## Get "proper" study *dates* for each ID
+study_dates <- tibble(
+  study_date =
+    map(pull(all_enrolled, enroll_date), ~ seq(., by = 1, length.out = 30)) %>%
+    flatten_int() %>%
+    as.Date(origin = "1970-1-1")
+)
+
+## Create "dummy" data frame with ID, study event, study day, study date up to
+## day 30 for each patient
+timeline_df <- tibble(
+  id = rep(sort(unique(all_enrolled$id)), each = 30),
+  study_day = rep(1:30, length(unique(all_enrolled$id)))
+) %>%
+  left_join(subset(all_enrolled,
+                   select = c(id, enroll_date, death_date, hospdis_date,
+                              studywd_date)),
+            by = "id") %>%
+  bind_cols(study_dates) %>%
+  ## Add "status" for each day:
+  ##  - deceased
+  ##  - discharged
+  ##  - withdrawn
+  ##  - in hospital
+  ## With additional indicator for "transition day", or days on which patients
+  ## died, were discharged, or withdrew. These days may or may not have data
+  ## collected (eg, if patient died in evening, data may have been collected,
+  ## but if patient died in morning, likely that no data was collected).
+  mutate(
+    redcap_event_name = case_when(
+      study_day == 1  ~ "Enrollment /Study Day 1",
+      TRUE            ~ paste("Study Day", study_day)
+    ),
+    transition_day = (!is.na(death_date) & study_date == death_date) |
+      (!is.na(studywd_date) & study_date == studywd_date) |
+      (!is.na(hospdis_date) & study_date == hospdis_date),
+    study_status = factor(
+      case_when(
+        !is.na(death_date) & study_date >= death_date ~ 4,
+        !is.na(hospdis_date) & study_date >= hospdis_date ~ 3,
+        !is.na(studywd_date) & study_date >= studywd_date ~ 2,
+        TRUE ~ 1
+      ),
+      levels = 1:4,
+      labels = c("In hospital", "Withdrawn", "Discharged", "Deceased"))
+  )
+
+## Specimen collection: all colors (blue, purple, green, red) done on day 1 and
+##  discharge; red *not* done on day 3/5 (all others are)
+specimen_df <- inhosp_df %>%
+  dplyr::select(
+    id, redcap_event_name, specimen_date, starts_with("study_day_specimen"),
+    ends_with("microtubes")
+  ) %>%
+  ## Create a single value for which specimen was drawn (days 1/3/5/discharge)
+  unite(specimen_time, starts_with("study_day_specimen"), sep = "; ") %>%
+  mutate(
+    ## String manipulation so each value includes only "Day x [and Discharge]"
+    specimen_time = str_remove_all(specimen_time, "NA|; *"),
+    specimen_time = ifelse(
+      specimen_time == "", NA,
+      str_remove(specimen_time, "Enrollment/| only")
+    )
+  ) %>%
+  separate(
+    specimen_time, into = c("specimen_time", "double_duty"), sep = " and "
+  ) %>%
+  mutate(double_duty = !is.na(double_duty))
+
+## Concatenate records pulling double duty: serve as both day 5 + d/c, eg
+specimen_df <- bind_rows(
+  specimen_df,
+  specimen_df %>%
+    filter(double_duty) %>%
+    mutate(
+      redcap_event_name = "Study Day 30",
+      specimen_time = "Discharge"
+    )
+) %>%
+  ## Remove records with no specimen_time
+  filter(!is.na(specimen_time)) %>%
+  ## Join with records from timeline_df representing days which "should" have
+  ##  specimens (days 1, 3, 5, discharge)
+  right_join(
+    timeline_df %>%
+      filter(
+        redcap_event_name %in% c(
+          "Enrollment /Study Day 1", "Study Day 3", "Study Day 5", "Study Day 30"
+        )
+      ),
+    by = c("id", "redcap_event_name")
+  ) %>%
+  ## Keep rows where:
+  ## - study day 1, 3, 5 and patient hospitalized; or
+  ## - discharge day and patient is not deceased or withdrawn
+  ## This should remove rows where specimen log filled out after discharge/death
+  ## (eg, VIN-0066 day 5)
+  filter(
+    (redcap_event_name %in%
+       c("Enrollment /Study Day 1", "Study Day 3", "Study Day 5") &
+       (study_status == "In hospital" | transition_day)) |
+      (redcap_event_name == "Study Day 30" &
+         !(study_status %in% c("Deceased", "Withdrawn")))
+  ) %>%
+  ## Reshape to long format, with one record per day/tube color
+  dplyr::select(id, redcap_event_name, ends_with("microtubes")) %>%
+  gather(key = Color, value = drawn, ends_with("microtubes")) %>%
+  mutate(
+    Color = str_remove(Color, "\\_microtubes"),
+    ## Compliance: At least one tube drawn
+    compliant = !is.na(drawn) & drawn > 0,
+    ## Factor version of event; rely on redcap_event_name, in case no data was
+    ##  entered for specimens
+    redcap_event_name = ifelse(
+      redcap_event_name == "Study Day 30", "Discharge", redcap_event_name
+    ),
+    Day = fct_relevel(
+      str_remove(redcap_event_name, "[Enrollment /]*Study | Day$"),
+      "Day 1", "Day 3", "Day 5", "Discharge"
+    )
+  ) %>%
+  ## Red tubes are not drawn on days 3/5 (unless it was also discharge day)
+  filter(!(Color == "red" & Day %in% c("Day 3", "Day 5"))) %>%
+  ## Summarize % compliance by study day, tube color
+  group_by(Day, Color) %>%
+  summarise(
+    Compliance = mean(compliant, na.rm = TRUE)
+  ) %>%
+  ungroup()
+
 # ################################################################################
 # ## Follow-Up Phase
 # ################################################################################
