@@ -39,8 +39,19 @@ mosaic_pal <- c(
   "red7" = "#F8D4D1", "cream" = "#FEFEFC"
 )
 
+insight_pal <- c(
+  "darkred" = "#571705",
+  "lightred" = "#d93c02",
+  "darkgreen" = "#455705",
+  "lightgreen" = "#7e9f09",
+  "darkpurple" = "#170577",
+  "darkblue" = "#054557",
+  "gold" = "#866407"
+)
+
 ## Function to get hex for a specific element
 mosaic_col <- function(hex){ as.character(mosaic_pal[hex]) }
+insight_col <- function(hex){ as.character(insight_pal[hex]) }
 
 ## Colors for assessment plots
 asmt_values = c(
@@ -50,7 +61,7 @@ asmt_values = c(
 )
 
 ## Named vector of colors for exclusions
-## Treemap palette: c("#571705", "#455705", "#054557")
+## Treemap palette: c("#571705" (dark red), "#455705" (green), "#054557" (blue))
 ## Individual exclusions will be variations on that palette
 exc_colors <- c(
   ## Informed consent
@@ -282,11 +293,11 @@ pct_caregiver_comp <-
 valueBox(
   value = paste0(pct_surrogate_comp, "%"),
   caption =
-    "fully completed pre-hospital questionnaires<br>(General, basic/IADLs, NIDA, life space, employment, income, grit, BDI)",
+    "fully completed pre-hospital questionnaires<br>(General, basic/IADLs, NIDA, Life Space, employment, income, Grit, BDI)",
   color = ifelse(
-    pct_surrogate_comp < 80, mosaic_col("orange3"), mosaic_col("green3")
+    pct_surrogate_comp < 80, insight_col("lightred"), insight_col("lightgreen")
   ),
-  icon = "ion-heart"
+  icon = "ion-people"
 )
 
 ```
@@ -299,7 +310,7 @@ valueBox(
   caption =
     "fully completed caregiver questionnaires<br>(Zarit, Memory & Behavior)",
   color = ifelse(
-    pct_caregiver_comp < 80, mosaic_col("orange3"), mosaic_col("green3")
+    pct_caregiver_comp < 80, insight_col("lightred"), insight_col("lightgreen")
   ),
   icon = "ion-heart"
 )
@@ -310,20 +321,30 @@ Row
 --------------------------------------------------------------------------------
 ### Specimen Log Compliance (% of Patients Eligible)
 ```{r specimen_compliance}
+## Color palette
+specimen_colors <- c(
+  "blue" = insight_col("darkblue"),
+  "green" = insight_col("darkgreen"),
+  "purple" = insight_col("darkpurple"),
+  "red" = insight_col("darkred")
+)
+
 ## Add text for tooltips
 specimen_df$htext <- glue::glue_data(
   specimen_df,
   "{Day}, {Color}: {scales::percent(Compliance)}"
 )
 specimen_plot <- ggplot(
-  data = specimen_df,
-  aes(group = Color, x = Day, y = Compliance, text = htext)
+  data = specimen_df, aes(x = Day, y = Compliance, text = htext)
 ) +
-  geom_bar(aes(fill = Color), position = "dodge", stat = "identity") +
+  geom_pointrange(
+    aes(ymin = 0, ymax = Compliance, color = Color),
+    size = 3, position = position_dodge(width = 0.7)
+  ) +
   scale_y_continuous(limits = c(0, 1),
                      breaks = seq(0, 1, 0.5),
                      label = scales::percent) +
-  # scale_fill_manual(values = c(mosaic_col("blue3"), "#5F0395"), guide = FALSE) +
+  scale_color_manual(values = specimen_colors, guide = FALSE) +
   scale_alpha_manual(values = c(0.65, 0.85)) +
   theme_minimal() +
   theme(legend.position = "none",
@@ -351,7 +372,7 @@ tm_status <- treemap(
   type = "index",
   title = "",
   algorithm = "squarified",
-  palette = mosaic_pal[c("blue3", "red1", "orange1", "green2")],
+  palette = insight_pal[c("darkblue", "darkred", "darkgreen", "darkpurple")],
   draw = FALSE
 )
 hc_tm_status <- hctreemap(
