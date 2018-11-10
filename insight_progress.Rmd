@@ -293,7 +293,7 @@ pct_caregiver_comp <-
 valueBox(
   value = paste0(pct_surrogate_comp, "%"),
   caption =
-    "fully completed pre-hospital questionnaires<br>(General, basic/IADLs, NIDA, Life Space, employment, income, Grit, BDI)",
+    "fully completed pre-hospital questionnaires<br>(General, basic/IADLs, NIDA, Life Space, employment, income, Grit, BDI, attitude toward donation)",
   color = ifelse(
     pct_surrogate_comp < 80, insight_col("lightred"), insight_col("lightgreen")
   ),
@@ -389,6 +389,92 @@ hc_tm_status <- hctreemap(
     align = "left"
   )
 hc_tm_status
+```
+
+Follow-Up {data-orientation=rows}
+================================================================================
+Row
+--------------------------------------------------------------------------------
+
+```{r fu_prep}
+prop_totals_pt <- map_dbl(
+  fu_totals %>% pull(prop_comp_pt), ~ round(., 2)
+) %>%
+  set_names(fu_totals %>% pull(redcap_event_name))
+prop_totals_cg <- map_dbl(
+  fu_totals %>% pull(prop_comp_cg), ~ round(., 2)
+) %>%
+  set_names(fu_totals %>% pull(redcap_event_name))
+
+fu_asmts <- fu_asmts %>%
+  mutate(
+    asmt_type = case_when(
+      asmt_type == "brain_comp"        ~ "Donation",
+      asmt_type == "cd_comp"           ~ "CD-RISC",
+      asmt_type == "cg_comp"           ~ "CG Gen.",
+      asmt_type == "cog_comp"          ~ "Cognitive",
+      asmt_type == "driving_care_comp" ~ "Driving (CG)",
+      asmt_type == "driving_comp"      ~ "Driving (PT)",
+      asmt_type == "emp_comp"          ~ "Emp.",
+      asmt_type == "gq_comp"           ~ "Gen.",
+      asmt_type == "hand_comp"         ~ "Hand.",
+      asmt_type == "mb_comp"           ~ "M/B",
+      asmt_type == "social_comp"       ~ "Social",
+      asmt_type == "zarit_comp"        ~ "Zarit",
+      TRUE ~ toupper(str_remove(asmt_type, "\\_comp$"))
+    ),
+    htext = paste0(asmt_type, ": ", scales::percent(round(prop_comp, 2))),
+    comp_ok = case_when(
+      prop_comp > 0.90 ~ "Excellent",
+      prop_comp > 0.80 ~ "Okay",
+      TRUE             ~ "Uh-oh"
+    )
+  )
+
+```
+
+### 3-Month Follow-Up, Patients{data-width=25%}
+```{r fu_pt_3m}
+valueBox(
+  value = scales::percent(pluck(prop_totals_pt, "3 Month Assessment")),
+  caption = "<b>patient assessments</b> fully or partially completed,<br><b>3 months</b>",
+  color = case_when(
+    pluck(prop_totals_pt, "3 Month Assessment") < 0.8 ~ asmt_values[["Uh-oh"]],
+    pluck(prop_totals_pt, "3 Month Assessment") < 0.9 ~ asmt_values[["Okay"]],
+    TRUE ~ asmt_values[["Excellent"]],
+  )
+)
+
+```
+
+### 3-Month Follow-Up, Caregivers{data-width=25%}
+```{r fu_cg_3m}
+valueBox(
+  value = scales::percent(pluck(prop_totals_cg, "3 Month Assessment")),
+  caption = "<b>caregiver assessments</b> fully or partially completed,<br><b>3 months</b>",
+  color = case_when(
+    pluck(prop_totals_cg, "3 Month Assessment") < 0.8 ~ asmt_values[["Uh-oh"]],
+    pluck(prop_totals_cg, "3 Month Assessment") < 0.9 ~ asmt_values[["Okay"]],
+    TRUE ~ asmt_values[["Excellent"]],
+  )
+)
+
+```
+
+### Assessments {data-width=20%}
+```{r fu_asmts_3m}
+p_3m <- plot_asmts_comp(
+  df = fu_asmts %>%
+    filter(
+      redcap_event_name == "3 Month Assessment",
+      asmt_type %in% c("Cognitive", "Emp.")
+    ),
+  ybreaks = 0:1,
+  order_desc = FALSE
+)
+
+ggplotly(p_3m + theme(axis.text.y = element_blank()), tooltip = "text")
+
 ```
 
 Study & Technical Info
