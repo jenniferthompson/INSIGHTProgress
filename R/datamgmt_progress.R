@@ -40,12 +40,12 @@ import_df <- function(rctoken){
   tmp_csv
 }
 
-# ## Comment out while building dashboard to save time
-# inhosp_df <- import_df("INSIGHT_IH_TOKEN")
-# exc_df <- import_df("INSIGHT_EXC_TOKEN")
-# fu_df <- import_df("INSIGHT_FU_TOKEN")
-# save(inhosp_df, exc_df, fu_df, file = "testdata/testdata.Rdata")
-load("testdata/testdata.Rdata")
+## Comment out while building dashboard to save time
+inhosp_df <- import_df("INSIGHT_IH_TOKEN")
+exc_df <- import_df("INSIGHT_EXC_TOKEN")
+fu_df <- import_df("INSIGHT_FU_TOKEN")
+save(inhosp_df, exc_df, fu_df, file = "testdata/testdata.Rdata")
+# load("testdata/testdata.Rdata")
 
 ## Rename follow-up ID variable
 names(fu_df) <- str_replace(names(fu_df), "^gq\\_study\\_id$", "id")
@@ -407,240 +407,261 @@ specimen_df <- bind_rows(
   ) %>%
   ungroup()
 
-# ################################################################################
-# ## Follow-Up Phase
-# ################################################################################
-# 
-# ## Note: No date field for PASE
-# 
-# ## -- Create dummy df: One record per enrolled patient per f/u time point ------
-# fu_dummy <- cross_df(
-#   list(
-#     id = unique(all_enrolled$id),
-#     redcap_event_name = unique(fu_df$redcap_event_name)
-#   )
-# )
-# 
-# ## List of assessments done at each time point
-# asmts_phone <- c("ls", "ph_biadl")
-# asmts_full <- c(
-#   "gq", "biadl", "sppb", "hand", "rbans", "trails", "social", "eq5d", "pase",
-#   "emp", "hus", "bpi", "audit", "zarit", "membehav", "ls"
-# )
-# asmts_all <- unique(c(asmts_phone, asmts_full))
-# asmts_withdate <- setdiff(asmts_all, "pase") ## No date variable for PASE
-# 
-# ## -- Function to turn missing assessment indicators to FALSE ------------------
-# ## This happens if (eg) the patient has not yet been reached for an assessment
-# ##  at a given time point; the "test_complete" variable has not yet been filled
-# ##  out, but for monitoring purposes, patient should be counted as not assessed
-# turn_na_false <- function(x, phone_asmt, df){
-#   if(phone_asmt){
-#     ifelse(is.na(x) & df$phone_only & df$fu_elig, FALSE, x)
-#   } else{
-#     ifelse(is.na(x) & !df$phone_only & df$fu_elig, FALSE, x)
-#   }
-# }
-# 
-# ## -- Combine in-hospital dates with follow-up data ----------------------------
-# fu_df2 <- fu_dummy %>%
-#   ## Merge in-hospital info onto dummy records
-#   left_join(
-#     all_enrolled %>%
-#       select(id, hospdis_date, studywd_date, death_date, inhosp_status),
-#     by = "id"
+################################################################################
+## Follow-Up Phase
+################################################################################
+
+## Note: We're not dealing with phone-only time points; see MOSAIC dashboard
+##  code later if that's needed
+
+## **Patient** assessments at 3, 12m:
+## general questions; basic/IADLs; RBANS/CLOX/Trails; employment/income;
+##  driving; hospital/ED use; SPPB; handgrip; EQ5D; GOSE; NIDA; AUDIT; BPI; BDI;
+##  attitude toward brain donation; PCL-5; CD-RISC; social vulnerability
+## **Caregiver** assessments at 3, 12m:
+## general/employment; Zarit/ memory/behavior; driving
+
+## -- Create dummy df: One record per enrolled patient per f/u time point ------
+fu_dummy <- cross_df(
+  list(
+    id = unique(all_enrolled$id),
+    redcap_event_name = unique(fu_df$redcap_event_name)
+  )
+)
+
+## List of assessments done at each time point
+asmts_pt <- c(
+  "gq", "biadl", "cog", "emp", "driving", "hus", "sppb", "hand", "eq5d", "gose",
+  "nida", "audit", "bpi", "bdi", "brain", "pcl", "cd", "social"
+)
+asmts_cg <- c("cg", "zarit", "mb", "driving_care")
+
+asmts_all <- unique(c(asmts_pt, asmts_cg))
+asmts_withdate <- str_replace(asmts_all, "^cd$", "cdrisc")
+  ## CD-RISC has inconsistent field names
+
+## -- Function to turn missing assessment indicators to FALSE ------------------
+## This happens if (eg) the patient has not yet been reached for an assessment
+##  at a given time point; the "test_complete" variable has not yet been filled
+##  out, but for monitoring purposes, patient should be counted as not assessed
+turn_na_false <- function(x, df){
+  ifelse(is.na(x) & df$fu_elig, FALSE, x)
+}
+
+## -- Combine in-hospital dates with follow-up data ----------------------------
+fu_df2 <- fu_dummy %>%
+  ## Only want to monitor 3, 12m assessments
+  filter(redcap_event_name %in% paste(c(3, 12), "Month Assessment")) %>%
+  ## Merge in-hospital info onto dummy records
+  left_join(
+    all_enrolled %>%
+      select(id, hospdis_date, studywd_date, death_date, inhosp_status),
+    by = "id"
+  ) %>%
+  left_join(
+    fu_df %>%
+      ## Select only variables needed for status, completion at time point
+      dplyr::select(
+        id, redcap_event_name, gq_rsn,
+        paste0(asmts_all, "_comp"),
+        paste0(asmts_withdate, "_date")
+      ),
+    by = c("id", "redcap_event_name")
+  ) %>%
+  ## Convert dates to Date
+  mutate_at(paste0(asmts_withdate, "_date"), ymd) %>%
+  ## Was each assessment completed at this time point?
+  mutate_at(paste0(asmts_all, "_comp"), ~ str_detect(., "^Yes")) %>%
+  mutate(
+    ## How many [patient, caregiver] assessments were done at each?
+    n_asmts_pt = rowSums(.[, paste0(asmts_pt, "_comp")], na.rm = TRUE),
+    n_asmts_cg = rowSums(.[, paste0(asmts_cg, "_comp")], na.rm = TRUE),
+    any_pt = n_asmts_pt > 0,
+    any_cg = n_asmts_cg > 0,
+    all_pt = n_asmts_pt == length(asmts_pt),
+    all_cg = n_asmts_cg == length(asmts_cg)
+  )
+
+## -- Figure out patient's status at each time point ---------------------------
+## Get first, last asssessment at each time point (these will often, but not
+##  always, be the same; sometimes the assessment was broken up into 2+ calls or
+##  visits due to time/fatigue)
+asmt_minmax <- fu_df2 %>%
+  dplyr::select(id, redcap_event_name, paste0(asmts_withdate, "_date")) %>%
+  gather(key = "asmt_type", value = "asmt_date", ends_with("_date")) %>%
+  ## What is the earliest, latest followup date at this assessment?
+  group_by(id, redcap_event_name) %>%
+  summarise(
+    ## Necessary to redo ymd(); otherwise it thinks none of them are NA?
+    first_asmt = ymd(min(asmt_date, na.rm = TRUE)),
+    last_asmt = ymd(max(asmt_date, na.rm = TRUE))
+  ) %>%
+  ungroup()
+
+fu_long <- fu_df2 %>%
+  left_join(asmt_minmax, by = c("id", "redcap_event_name")) %>%
+  ## Don't need dates anymore
+  dplyr::select(-one_of(paste0(asmts_withdate, "_date"))) %>%
+  ## Determine status at each time point
+  mutate(
+    fu_month = as.numeric(str_extract(redcap_event_name, "^\\d+(?= )")),
+    daysto_window = case_when(
+      fu_month == 1  ~ 30,
+      fu_month == 2  ~ 60,
+      fu_month == 3  ~ 83,
+      fu_month == 6  ~ 180,
+      fu_month == 12 ~ 335,
+      TRUE           ~ as.numeric(NA)
+    ),
+    enter_window = as.Date(hospdis_date + daysto_window),
+    exit_window = as.Date(
+      case_when(
+        fu_month %in% c(1, 2) ~ enter_window + 14,
+        fu_month == 3         ~ enter_window + 56,
+        fu_month == 6         ~ enter_window + 30,
+        fu_month == 12        ~ enter_window + 90,
+        TRUE                  ~ as.Date(NA)
+      )
+    ),
+    in_window = ifelse(is.na(hospdis_date), NA, enter_window <= Sys.Date()),
+
+    ## Indicator for whether patient refused assessment (but didn't withdraw)
+    ## Currently relies on general questions only; checking with Julie
+    refused_gq = !is.na(gq_rsn) & gq_rsn == "Patient refusal",
+
+    ## Followup status:
+    ## - Had >1 assessment: Assessed
+    ## - Died prior to end of followup window: Died
+    ## - Withdrew prior to end of followup window: Withdrew
+    ## - Not yet in the follow-up window: Currently ineligible
+    ## - VMO-001-7: consent did not include phone assessments (1, 2, 6m)
+    ## - None of the above: Currently lost to follow-up
+    fu_status_pt = factor(
+      case_when(
+        any_pt                                              ~ 1,
+        !is.na(death_date) &
+          (inhosp_status == "Died in hospital" |
+             death_date < exit_window)                      ~ 2,
+        !is.na(studywd_date) &
+          (inhosp_status == "Withdrew in hospital" |
+             studywd_date < exit_window)                    ~ 3,
+        Sys.Date() < enter_window                           ~ 4,
+        inhosp_status == "Still in hospital"                ~ as.numeric(NA),
+        refused_gq                                          ~ 5,
+        TRUE                                                ~ 6
+      ),
+      levels = 1:6,
+      labels = c(
+        "Assessment fully or partially completed",
+        "Died before follow-up window ended",
+        "Withdrew before follow-up window ended",
+        "Not yet eligible for follow-up",
+        "Refused assessment (but did not withdraw)",
+        "Eligible, but not yet assessed"
+      )
+    ),
+
+    fu_status_cg = factor(
+      case_when(
+        any_cg                                              ~ 1,
+        !is.na(death_date) &
+          (inhosp_status == "Died in hospital" |
+             death_date < exit_window)                      ~ 2,
+        !is.na(studywd_date) &
+          (inhosp_status == "Withdrew in hospital" |
+             studywd_date < exit_window)                    ~ 3,
+        Sys.Date() < enter_window                           ~ 4,
+        inhosp_status == "Still in hospital"                ~ as.numeric(NA),
+        refused_gq                                          ~ 5,
+        TRUE                                                ~ 6
+      ),
+      levels = 1:6,
+      labels = c(
+        "Assessment fully or partially completed",
+        "Died before follow-up window ended",
+        "Withdrew before follow-up window ended",
+        "Not yet eligible for follow-up",
+        "Refused assessment (but did not withdraw)",
+        "Eligible, but not yet assessed"
+      )
+    ),
+    
+    ## Indicators for whether patient/caregiver is eligible for followup
+    ##  (included in denominator) and has been assessed (included in numerator)
+    fu_elig_pt = fu_status_pt %in% c(
+      "Assessment fully or partially completed",
+      "Refused assessment (but did not withdraw)",
+      "Eligible, but not yet assessed"
+    ),
+    fu_comp_pt = ifelse(
+      !fu_elig_pt, NA, fu_status_pt == "Assessment fully or partially completed"
+    ),
+    fu_elig_cg = fu_status_cg %in% c(
+      "Assessment fully or partially completed",
+      "Refused assessment (but did not withdraw)",
+      "Eligible, but not yet assessed"
+    ),
+    fu_comp_cg = ifelse(
+      !fu_elig_cg, NA, fu_status_pt == "Assessment fully or partially completed"
+    )
+  ) %>%
+  ## Set asmt indicators to FALSE if pt eligible but no data yet entered
+  ## Patient
+  mutate_at(
+    vars(paste0(asmts_pt, "_comp")),
+    funs(ifelse(is.na(.) & fu_elig_pt, FALSE, .))
+  ) %>%
+  ## Caregiver
+  mutate_at(
+    vars(paste0(asmts_cg, "_comp")),
+    funs(ifelse(is.na(.) & fu_elig_cg, FALSE, .))
+  )
+
+# ## -- Check patients without followup ----------------------------------------
+# fu_long %>%
+#   filter(fu_status_pt == "Eligible, but not yet assessed") %>%
+#   dplyr::select(
+#     id, redcap_event_name, hospdis_date, enter_window, exit_window
 #   ) %>%
-#   left_join(
-#     fu_df %>%
-#       ## Select only variables needed for status, completion at time point
-#       dplyr::select(
-#         id, redcap_event_name, ends_with("complete_yn"), gq_rsn, rbans_completed,
-#         trails_completed, pase_comp_ph, emp_complete, hus_complete, bpi_complete,
-#         ends_with("datecomp"), ends_with("date"), ends_with("date_complete"),
-#         ends_with("date_compl")
-#       ),
-#     by = c("id", "redcap_event_name")
-#   ) %>%
-#   ## Rename all completion, date variables for consistency
-#   rename_at(
-#     vars(matches("\\_complete.*$"), pase_comp_ph),
-#     ~ str_replace(., "\\_comp.+$", "_complete")
-#   ) %>%
-#   rename_at(
-#     vars(matches("\\_date.+")), ~ str_replace(., "\\_date.+", "_date")
-#   ) %>%
-#   ## Convert dates to Date
-#   mutate_at(paste0(asmts_withdate, "_date"), ymd) %>%
-#   ## Was each assessment completed at this time point?
-#   mutate_at(
-#     paste0(unique(c(asmts_phone, asmts_full)), "_complete"),
-#     ~ str_detect(., "^Yes")
-#   ) %>%
-#   mutate(
-#     ## Is this a phone assessment or a full assessment?
-#     phone_only = str_detect(redcap_event_name, "Phone Call"),
-#     ## How many assessments were done at each?
-#     ##  If time point involved a phone assessment, info for full assessment is
-#     ##  missing, and vice versa
-#     n_asmts_phone = ifelse(
-#       phone_only,
-#       rowSums(.[, paste0(asmts_phone, "_complete")], na.rm = TRUE),
-#       NA
-#     ),
-#     n_asmts_full = ifelse(
-#       phone_only,
-#       NA,
-#       rowSums(.[, paste0(asmts_full, "_complete")], na.rm = TRUE)
-#     ),
-#     any_phone = n_asmts_phone > 0,
-#     any_full = n_asmts_full > 0,
-#     all_phone = n_asmts_phone == length(asmts_phone),
-#     all_full = n_asmts_full == length(asmts_full)
-#   )
-# 
-# ## -- Figure out patient's status at each time point ---------------------------
-# ## Get first, last asssessment at each time point (these will often, but not
-# ##  always, be the same; sometimes the assessment was broken up into 2+ calls or
-# ##  visits due to time/fatigue)
-# asmt_minmax <- fu_df2 %>%
-#   dplyr::select(id, redcap_event_name, paste0(asmts_withdate, "_date")) %>%
-#   gather(key = "asmt_type", value = "asmt_date", ends_with("_date")) %>%
-#   ## What is the earliest, latest followup date at this assessment?
-#   group_by(id, redcap_event_name) %>%
-#   summarise(
-#     ## Necessary to redo ymd(); otherwise it thinks none of them are NA?
-#     first_asmt = ymd(min(asmt_date, na.rm = TRUE)),
-#     last_asmt = ymd(max(asmt_date, na.rm = TRUE))
-#   ) %>%
-#   ungroup()
-# 
-# fu_long <- fu_df2 %>%
-#   left_join(asmt_minmax, by = c("id", "redcap_event_name")) %>%
-#   ## Don't need dates anymore
-#   dplyr::select(-one_of(paste0(asmts_withdate, "_date"))) %>%
-#   ## Determine status at each time point
-#   mutate(
-#     fu_month = as.numeric(str_extract(redcap_event_name, "^\\d+(?= )")),
-#     daysto_window = case_when(
-#       fu_month == 1  ~ 30,
-#       fu_month == 2  ~ 60,
-#       fu_month == 3  ~ 83,
-#       fu_month == 6  ~ 180,
-#       fu_month == 12 ~ 335,
-#       TRUE           ~ as.numeric(NA)
-#     ),
-#     enter_window = as.Date(hospdis_date + daysto_window),
-#     exit_window = as.Date(
-#       case_when(
-#         fu_month %in% c(1, 2) ~ enter_window + 14,
-#         fu_month == 3         ~ enter_window + 56,
-#         fu_month == 6         ~ enter_window + 30,
-#         fu_month == 12        ~ enter_window + 90,
-#         TRUE                  ~ as.Date(NA)
-#       )
-#     ),
-#     in_window = ifelse(is.na(hospdis_date), NA, enter_window <= Sys.Date()),
-#     
-#     ## Indicator for whether patient refused assessment (but didn't withdraw)
-#     ## Currently relies on general questions only; checking with Julie
-#     refused_gq = !is.na(gq_rsn) & gq_rsn == "Patient refusal",
-#     
-#     ## Followup status:
-#     ## - Had >1 assessment: Assessed
-#     ## - Died prior to end of followup window: Died
-#     ## - Withdrew prior to end of followup window: Withdrew
-#     ## - Not yet in the follow-up window: Currently ineligible
-#     ## - VMO-001-7: consent did not include phone assessments (1, 2, 6m)
-#     ## - None of the above: Currently lost to follow-up
-#     fu_status = factor(
-#       case_when(
-#         (phone_only & any_phone) | (!phone_only & any_full) ~ 1,
-#         !is.na(death_date) &
-#           (inhosp_status == "Died in hospital" |
-#              death_date < exit_window)                      ~ 2,
-#         !is.na(studywd_date) &
-#           (inhosp_status == "Withdrew in hospital" |
-#              studywd_date < exit_window)                    ~ 3,
-#         Sys.Date() < enter_window                           ~ 4,
-#         inhosp_status == "Still in hospital"                ~ as.numeric(NA),
-#         phone_only & id %in% paste0("VMO-00", 1:7)          ~ 5,
-#         refused_gq                                          ~ 6,
-#         TRUE                                                ~ 7
-#       ),
-#       levels = 1:7,
-#       labels = c(
-#         "Assessment fully or partially completed",
-#         "Died before follow-up window ended",
-#         "Withdrew before follow-up window ended",
-#         "Not yet eligible for follow-up",
-#         "Consent did not include phone assessment",
-#         "Refused assessment (but did not withdraw)",
-#         "Eligible, but not yet assessed"
-#       )
-#     ),
-#     
-#     ## Indicators for whether patient is eligible for followup (included in
-#     ##  denominator) and has been assessed (included in numerator)
-#     fu_elig = fu_status %in% c(
-#       "Assessment fully or partially completed",
-#       "Refused assessment (but did not withdraw)",
-#       "Eligible, but not yet assessed"
-#     ),
-#     fu_comp = ifelse(
-#       !fu_elig, NA, fu_status == "Assessment fully or partially completed"
-#     )
-#   ) %>%
-#   ## Set asmt indicators to FALSE if pt eligible but no data yet entered
-#   ## Phone only
-#   mutate_at(
-#     vars(paste0(asmts_phone, "_complete")),
-#     funs(ifelse(is.na(.) & phone_only & fu_elig, FALSE, .))
-#   ) %>%
-#   ## Full batteries
-#   mutate_at(
-#     vars(paste0(asmts_full, "_complete")),
-#     funs(ifelse(is.na(.) & !phone_only & fu_elig, FALSE, .))
-#   )
-# 
-# # ## -- Check patients without followup for JV -----------------------------------
-# # fu_long %>%
-# #   filter(fu_status == "Eligible, but not yet assessed") %>%
-# #   dplyr::select(
-# #     id, redcap_event_name, hospdis_date, enter_window, exit_window
-# #   ) %>%
-# #   arrange(redcap_event_name) %>%
-# #   write_csv(path = "testdata/eligible_nofu.csv", na = "", col_names = TRUE)
-# 
-# ## -- Summary statistics for dashboard -----------------------------------------
-# ## Overall % complete at each time point
-# fu_totals <- fu_long %>%
-#   dplyr::select(redcap_event_name, fu_elig, fu_comp) %>%
-#   filter(fu_elig) %>%
-#   group_by(redcap_event_name) %>%
-#   summarise(
-#     n_elig = sum(fu_elig),
-#     n_comp = sum(fu_comp),
-#     prop_comp = mean(fu_comp)
-#   )
-# 
-# fu_asmts <- fu_long %>%
-#   dplyr::select(redcap_event_name, fu_comp, ends_with("_complete")) %>%
-#   filter(fu_comp) %>%
-#   gather(key = asmt_type, value = asmt_done, ends_with("_complete")) %>%
-#   ## Only include assessments that "match" the time point
-#   filter(
-#     (redcap_event_name %in% paste(c(3, 12), "Month Assessment") &
-#       asmt_type %in% paste0(asmts_full, "_complete")) |
-#     (redcap_event_name %in% paste(c(1, 2, 6), "Month Phone Call") &
-#        asmt_type %in% paste0(asmts_phone, "_complete"))
-#   ) %>%
-#   group_by(redcap_event_name, asmt_type) %>%
-#   summarise(
-#     n_elig = sum(fu_comp),
-#     n_comp = sum(asmt_done),
-#     prop_comp = mean(asmt_done)
-#   )
-# 
+#   arrange(redcap_event_name) %>%
+#   write_csv(path = "testdata/eligible_nofu.csv", na = "", col_names = TRUE)
+
+## -- Summary statistics for dashboard -----------------------------------------
+## Overall % complete at each time point
+fu_totals <- fu_long %>%
+  dplyr::select(
+    redcap_event_name, starts_with("fu_elig"), starts_with("fu_comp")
+  ) %>%
+  group_by(redcap_event_name) %>%
+  summarise(
+    n_elig_pt = sum(fu_elig_pt),
+    n_comp_pt = sum(fu_comp_pt, na.rm = TRUE),
+    prop_comp_pt = mean(fu_comp_pt, na.rm = TRUE),
+    n_elig_cg = sum(fu_elig_cg),
+    n_comp_cg = sum(fu_comp_cg, na.rm = TRUE),
+    prop_comp_cg = mean(fu_comp_cg, na.rm = TRUE)
+  )
+
+fu_asmts <- fu_long %>%
+  dplyr::select(
+    redcap_event_name, starts_with("fu_comp"), ends_with("_comp")
+  ) %>%
+  gather(key = asmt_type, value = asmt_done, ends_with("_comp")) %>%
+  ## Was overall patient/caregiver followup completed? Which variable depends
+  ##  on which assessment we're talking about
+  mutate(
+    fu_comp = case_when(
+      asmt_type %in% paste0(asmts_pt, "_comp") ~ fu_comp_pt,
+      TRUE                                     ~ fu_comp_cg
+    )
+  ) %>%
+  group_by(redcap_event_name, asmt_type) %>%
+  summarise(
+    n_elig = sum(fu_comp, na.rm = TRUE),
+    n_comp = sum(asmt_done, na.rm = TRUE),
+    prop_comp = mean(asmt_done, na.rm = TRUE)
+  )
+
 # ## -- Rearrange data for Sankey plot -------------------------------------------
 # ## source = enrollment; target = end of hospitalization
 # sankey_hospital <- all_enrolled %>%
