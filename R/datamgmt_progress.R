@@ -251,8 +251,8 @@ status_count <- all_enrolled %>%
 
 ## -- Completion of pre-hospital surrogate, caregiver batteries ----------------
 ## Surrogate battery: General questions, basic/IADLs, NIDA, life space,
-##   employment questionnaire, income, grit, BDI
-## Caregiver battery: Attitude toward donation, Zarit, memory/behavior checklist
+##   employment questionnaire, income, grit, BDI, attitude toward donation
+## Caregiver battery: Zarit, memory/behavior checklist
 ## "Complete" = every section fully or partially completed
 surrogate_compvars <- c(
   paste0(
@@ -417,7 +417,7 @@ specimen_df <- bind_rows(
 ## **Patient** assessments at 3, 12m:
 ## general questions; basic/IADLs; RBANS/CLOX/Trails; employment/income;
 ##  driving; hospital/ED use; SPPB; handgrip; EQ5D; GOSE; NIDA; AUDIT; BPI; BDI;
-##  attitude toward brain donation; PCL-5; CD-RISC; social vulnerability
+##  PCL-5; CD-RISC; social vulnerability
 ## **Caregiver** assessments at 3, 12m:
 ## general/employment; Zarit/ memory/behavior; driving
 
@@ -432,7 +432,7 @@ fu_dummy <- cross_df(
 ## List of assessments done at each time point
 asmts_pt <- c(
   "gq", "biadl", "cog", "emp", "driving", "hus", "sppb", "hand", "eq5d", "gose",
-  "nida", "audit", "bpi", "bdi", "brain", "pcl", "cd", "social"
+  "nida", "audit", "bpi", "bdi", "pcl", "cd", "social"
 )
 asmts_cg <- c("cg", "zarit", "mb", "driving_care")
 
