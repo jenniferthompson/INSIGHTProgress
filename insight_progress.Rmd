@@ -294,7 +294,7 @@ pct_caregiver_comp <-
 valueBox(
   value = paste0(pct_surrogate_comp, "%"),
   caption =
-    "completed pre-hospital surrogate questionnaires<br><i>(General, B/IADLs, NIDA, LS, employment, income, Grit, BDI, attitude toward donation)</i>",
+    "completed pre-hospital surrogate questionnaires<br><i>(all assessments except Zarit, M/B)</i>",
   color = ifelse(
     pct_surrogate_comp < 80, insight_col("lightred"), insight_col("lightgreen")
   ),

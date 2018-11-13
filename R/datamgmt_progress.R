@@ -256,7 +256,8 @@ status_count <- all_enrolled %>%
 ## "Complete" = every section fully or partially completed
 surrogate_compvars <- c(
   paste0(
-    c("gq", "adl", "nida", "ls", "emp", "income", "grit", "bdi"), "_comp_ph"
+    c("gq", "adl", "nida", "ls", "emp", "income", "grit", "bdi", "iqcode"),
+    "_comp_ph"
   ),
   "attitude_comp_sur"
 )
