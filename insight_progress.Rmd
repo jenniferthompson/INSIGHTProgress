@@ -287,13 +287,13 @@ pct_caregiver_comp <-
 
 ```
 
-### Surrogate %
+### Surrogate %{data-width=35%}
 
 ```{r ph_surrogate}
 valueBox(
   value = paste0(pct_surrogate_comp, "%"),
   caption =
-    "fully completed pre-hospital questionnaires<br>(General, basic/IADLs, NIDA, Life Space, employment, income, Grit, BDI, surrogate attitude toward donation)",
+    "completed pre-hospital surrogate questionnaires<br><i>(General, B/IADLs, NIDA, LS, employment, income, Grit, BDI, attitude toward donation)</i>",
   color = ifelse(
     pct_surrogate_comp < 80, insight_col("lightred"), insight_col("lightgreen")
   ),
@@ -302,18 +302,25 @@ valueBox(
 
 ```
 
-### Caregiver %
+### Caregiver %{data-width=35%}
 
 ```{r ph_caregiver}
 valueBox(
   value = paste0(pct_caregiver_comp, "%"),
   caption =
-    "fully completed caregiver questionnaires<br>(Zarit, Memory & Behavior)",
+    "completed caregiver questionnaires<br><i>(Zarit, Memory & Behavior)</i>",
   color = ifelse(
     pct_caregiver_comp < 80, insight_col("lightred"), insight_col("lightgreen")
   ),
   icon = "ion-heart"
 )
+
+```
+
+### Surrogate/Caregiver Battery Completion{width=150%}
+```{r surrogate_pctcomp_ind}
+p_surr <- plot_asmts_comp(df = surrogate_pctcomp, ybreaks = seq(0, 1, 0.2))
+ggplotly(p_surr, tooltip = "text")
 
 ```
 

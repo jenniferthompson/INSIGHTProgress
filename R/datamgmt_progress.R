@@ -44,8 +44,8 @@ import_df <- function(rctoken){
 inhosp_df <- import_df("INSIGHT_IH_TOKEN")
 exc_df <- import_df("INSIGHT_EXC_TOKEN")
 fu_df <- import_df("INSIGHT_FU_TOKEN")
-save(inhosp_df, exc_df, fu_df, file = "testdata/testdata.Rdata")
-# load("testdata/testdata.Rdata")
+# save(inhosp_df, exc_df, fu_df, file = "testdata/testdata.Rdata")
+load("testdata/testdata.Rdata")
 
 ## Rename follow-up ID variable
 names(fu_df) <- str_replace(names(fu_df), "^gq\\_study\\_id$", "id")
@@ -274,6 +274,44 @@ all_enrolled <- all_enrolled %>%
       rowSums(.[, surrogate_compvars]) == length(surrogate_compvars),
     ph_caregiver_comp =
       rowSums(.[, caregiver_compvars]) == length(caregiver_compvars)
+  )
+
+## df for patients who *should have* had surrogate/caregiver batteries completed
+##  (note: this will eventually not include patients who withdrew early/were
+##   disqualified due to reasons like IQCODE; waiting on BP/CS to make database
+##   change to denote this)
+surrogate_pctcomp <- all_enrolled %>%
+  ## filter(...) %>%
+  dplyr::select(
+    one_of(surrogate_compvars),
+    one_of(caregiver_compvars)
+  ) %>%
+  ## Get proportion complete for each assessment
+  summarise_all(mean, na.rm = TRUE) %>%
+  ## Reshape to work with plot_asmts_comp()
+  gather(key = asmt_type, value = prop_comp) %>%
+  arrange(desc(prop_comp)) %>%
+  mutate(
+    ## Sort in descending order of % completed
+    x_sorted = 1:n(),
+    ## Clearer battery names
+    asmt_type = case_when(
+      asmt_type == "memory_comp_ph"    ~ "M/B",
+      asmt_type == "gq_comp_ph"        ~ "Gen.",
+      asmt_type == "emp_comp_ph"       ~ "Emp.",
+      asmt_type == "zarit_comp_ph"     ~ "Zarit",
+      asmt_type == "grit_comp_ph"      ~ "Grit",
+      asmt_type == "income_comp_ph"    ~ "Income",
+      asmt_type == "attitude_comp_sur" ~ "Attitude",
+      TRUE ~ toupper(str_remove(asmt_type, "\\_comp\\_ph|sur$"))
+    ),
+    asmt_type = fct_reorder(asmt_type, x_sorted),
+    htext = paste0(asmt_type, ": ", scales::percent(prop_comp)),
+    comp_ok = case_when(
+      prop_comp > 0.90 ~ "Excellent",
+      prop_comp > 0.80 ~ "Okay",
+      TRUE             ~ "Uh-oh"
+    )
   )
 
 ## -- Specimen log: compliance = >0 tubes drawn on days 1, 3, 5, discharge -----
