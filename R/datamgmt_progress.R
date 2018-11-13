@@ -41,9 +41,9 @@ import_df <- function(rctoken){
 }
 
 ## Comment out while building dashboard to save time
-inhosp_df <- import_df("INSIGHT_IH_TOKEN")
-exc_df <- import_df("INSIGHT_EXC_TOKEN")
-fu_df <- import_df("INSIGHT_FU_TOKEN")
+# inhosp_df <- import_df("INSIGHT_IH_TOKEN")
+# exc_df <- import_df("INSIGHT_EXC_TOKEN")
+# fu_df <- import_df("INSIGHT_FU_TOKEN")
 # save(inhosp_df, exc_df, fu_df, file = "testdata/testdata.Rdata")
 load("testdata/testdata.Rdata")
 

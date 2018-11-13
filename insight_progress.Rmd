@@ -40,13 +40,14 @@ mosaic_pal <- c(
 )
 
 insight_pal <- c(
-  "darkred" = "#571705",
-  "lightred" = "#d93c02",
-  "darkgreen" = "#455705",
+  "darkred"    = "#571705",
+  "lightred"   = "#d93c02",
+  "darkgreen"  = "#455705",
   "lightgreen" = "#7e9f09",
   "darkpurple" = "#170577",
-  "darkblue" = "#054557",
-  "gold" = "#866407"
+  "darkblue"   = "#054557",
+  "darkgold"   = "#866407",
+  "lightgold"  = "#cf9a0b"
 )
 
 ## Function to get hex for a specific element
@@ -55,9 +56,9 @@ insight_col <- function(hex){ as.character(insight_pal[hex]) }
 
 ## Colors for assessment plots
 asmt_values = c(
-  "Excellent" = mosaic_col("green4"),
-  "Okay" = mosaic_col("orange3"),
-  "Uh-oh" = mosaic_col("red5")
+  "Excellent" = insight_col("lightgreen"),
+  "Okay"      = insight_col("lightgold"),
+  "Uh-oh"     = insight_col("lightred")
 )
 
 ## Named vector of colors for exclusions
@@ -448,7 +449,7 @@ valueBox(
   color = case_when(
     pluck(prop_totals_pt, "3 Month Assessment") < 0.8 ~ asmt_values[["Uh-oh"]],
     pluck(prop_totals_pt, "3 Month Assessment") < 0.9 ~ asmt_values[["Okay"]],
-    TRUE ~ asmt_values[["Excellent"]],
+    TRUE ~ asmt_values[["Excellent"]]
   )
 )
 
@@ -462,7 +463,7 @@ valueBox(
   color = case_when(
     pluck(prop_totals_cg, "3 Month Assessment") < 0.8 ~ asmt_values[["Uh-oh"]],
     pluck(prop_totals_cg, "3 Month Assessment") < 0.9 ~ asmt_values[["Okay"]],
-    TRUE ~ asmt_values[["Excellent"]],
+    TRUE ~ asmt_values[["Excellent"]]
   )
 )
 
