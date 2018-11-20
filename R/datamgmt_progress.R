@@ -41,11 +41,11 @@ import_df <- function(rctoken){
 }
 
 ## Comment out while building dashboard to save time
-# inhosp_df <- import_df("INSIGHT_IH_TOKEN")
-# exc_df <- import_df("INSIGHT_EXC_TOKEN")
-# fu_df <- import_df("INSIGHT_FU_TOKEN")
-# save(inhosp_df, exc_df, fu_df, file = "testdata/testdata.Rdata")
-load("testdata/testdata.Rdata")
+inhosp_df <- import_df("INSIGHT_IH_TOKEN")
+exc_df <- import_df("INSIGHT_EXC_TOKEN")
+fu_df <- import_df("INSIGHT_FU_TOKEN")
+save(inhosp_df, exc_df, fu_df, file = "testdata/testdata.Rdata")
+# load("testdata/testdata.Rdata")
 
 ## Rename follow-up ID variable
 names(fu_df) <- str_replace(names(fu_df), "^gq\\_study\\_id$", "id")
@@ -251,15 +251,14 @@ status_count <- all_enrolled %>%
 
 ## -- Completion of pre-hospital surrogate, caregiver batteries ----------------
 ## Surrogate battery: General questions, basic/IADLs, NIDA, life space,
-##   employment questionnaire, income, grit, BDI, attitude toward donation
+##   employment questionnaire, income, grit, BDI (*not* attitude toward donation)
 ## Caregiver battery: Zarit, memory/behavior checklist
 ## "Complete" = every section fully or partially completed
 surrogate_compvars <- c(
   paste0(
     c("gq", "adl", "nida", "ls", "emp", "income", "grit", "bdi", "iqcode"),
     "_comp_ph"
-  ),
-  "attitude_comp_sur"
+  )
 )
 caregiver_compvars <- c(
   paste0(c("zarit", "memory"), "_comp_ph")
@@ -277,6 +276,87 @@ all_enrolled <- all_enrolled %>%
       rowSums(.[, caregiver_compvars]) == length(caregiver_compvars)
   )
 
+## -- Attitude toward brain donation -------------------------------------------
+## This is asked separately of surrogates (during pre-hospital battery) and
+## patients (at some point during hospitalization or follow-up, whenever patient
+## is cognitively able to answer).
+## Same denominator for both: All patients, except those withdrawn by staff due
+##  to high IQCODE. (This means rates will be low for patients in particular,
+##  since some patients will not have "woken up enough" to be asked; however,
+##  there's no straightforward way to remove these patients from the
+##  denominator.)
+
+all_enrolled <- all_enrolled %>%
+  mutate(
+    elig_attitude =
+      !(!is.na(studywd_who) &
+          studywd_who == "Study staff b/c patient scored IQCODE>3.8"),
+    attitude_surr = ifelse(
+      !elig_attitude, NA, !is.na(attitude_comp_sur) & attitude_comp_sur == "Yes"
+    ),
+    attitude_pt_inhosp = ifelse(
+      !elig_attitude, NA, !is.na(attitude_comp_pt) & attitude_comp_pt == "Yes"
+    ),
+    attitude_pt_fu = ifelse(
+      !elig_attitude, NA,
+      !is.na(attitude_comp_fu_pt) & attitude_comp_fu_pt == "Yes"
+    ),
+    attitude_pt_ever = ifelse(
+      !elig_attitude, NA, attitude_pt_inhosp | attitude_pt_fu
+    ),
+    attitude_pt_cogunable = ifelse(
+      !elig_attitude, NA,
+      !attitude_pt_ever &
+        ((!is.na(attitude_rsn_pt) &
+          attitude_rsn_pt == "Patient never cognitively able by hospital discharge") |
+        (!is.na(attitude_rsn_fu_pt) &
+          attitude_rsn_fu_pt == "Patient never cognitively able"))
+    ),
+    attitude_pt_died = ifelse(
+      !elig_attitude, NA,
+      !attitude_pt_ever &
+       ((!is.na(attitude_rsn_pt) &
+          attitude_rsn_pt == "Patient died or withdrew prior to completing") |
+         (!is.na(attitude_rsn_fu_pt) &
+            attitude_rsn_fu_pt == "Patient died or withdrew prior to completing"))
+    ),
+    attitude_pt_missed = ifelse(
+      !elig_attitude, NA,
+      !(attitude_pt_ever | attitude_pt_cogunable | attitude_pt_died)
+    ),
+    attitude_pt_status = case_when(
+      attitude_pt_inhosp    ~ "Yes, in hospital",
+      attitude_pt_fu        ~ "Yes, during follow-up",
+      attitude_pt_died      ~ "No, died/withdrew",
+      attitude_pt_cogunable ~ "Never cognitively able",
+      attitude_pt_missed    ~ "No, missed",
+      !elig_attitude        ~ as.character(NA),
+      TRUE                  ~ "Fix this"
+    )
+  )
+
+# attitude_pctcomp <- all_enrolled %>%
+#   ## filter(...) %>%
+#   dplyr::select(attitude_surr, attitude_pt_ever) %>%
+#   ## Get proportion complete for each assessment
+#   summarise_all(mean, na.rm = TRUE) %>%
+#   ## Reshape to work with plot_asmts_comp()
+#   gather(key = asmt_type, value = prop_comp) %>%
+#   mutate(
+#     ## Clearer battery names
+#     asmt_type = case_when(
+#       asmt_type == "attitude_surr" ~ "Surrogate",
+#       TRUE                         ~ "Patient"
+#     ),
+#     asmt_type = fct_relevel(asmt_type, "Surrogate", "Patient"),
+#     htext = paste0(asmt_type, ": ", scales::percent(prop_comp)),
+#     comp_ok = case_when(
+#       prop_comp > 0.90 ~ "Excellent",
+#       prop_comp > 0.80 ~ "Okay",
+#       TRUE             ~ "Uh-oh"
+#     )
+#   )
+
 ## df for patients who *should have* had surrogate/caregiver batteries completed
 ##  (note: this will eventually not include patients who withdrew early/were
 ##   disqualified due to reasons like IQCODE; waiting on BP/CS to make database
@@ -285,13 +365,14 @@ surrogate_pctcomp <- all_enrolled %>%
   ## filter(...) %>%
   dplyr::select(
     one_of(surrogate_compvars),
-    one_of(caregiver_compvars)
+    one_of(caregiver_compvars),
+    attitude_pt_ever, attitude_surr
   ) %>%
   ## Get proportion complete for each assessment
   summarise_all(mean, na.rm = TRUE) %>%
   ## Reshape to work with plot_asmts_comp()
   gather(key = asmt_type, value = prop_comp) %>%
-  arrange(desc(prop_comp)) %>%
+  arrange(str_detect(asmt_type, "^attitude"), desc(prop_comp)) %>%
   mutate(
     ## Sort in descending order of % completed
     x_sorted = 1:n(),
@@ -303,7 +384,8 @@ surrogate_pctcomp <- all_enrolled %>%
       asmt_type == "zarit_comp_ph"     ~ "Zarit",
       asmt_type == "grit_comp_ph"      ~ "Grit",
       asmt_type == "income_comp_ph"    ~ "Income",
-      asmt_type == "attitude_comp_sur" ~ "Attitude",
+      asmt_type == "attitude_pt_ever"  ~ "Att., Pt",
+      asmt_type == "attitude_surr"     ~ "Att., Surr",
       TRUE ~ toupper(str_remove(asmt_type, "\\_comp\\_ph|sur$"))
     ),
     asmt_type = fct_reorder(asmt_type, x_sorted),

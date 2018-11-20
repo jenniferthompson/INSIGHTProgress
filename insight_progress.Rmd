@@ -225,11 +225,11 @@ screening_statement <- sprintf(
 )
 
 casemix_statement <- glue(
-  "Of the {n_enrolled} enrolled, ",
-  "{pct_blunt} ({n_blunt}) experienced blunt trauma; ",
-  "{pct_pene} ({n_pene}) experienced penetrating trauma; ",
-  "{pct_burn} ({n_burn}) experienced burns; and ",
-  "{pct_tbi} ({n_tbi}) experienced TBI."
+  "Of those, ",
+  "{pct_blunt} experienced **blunt trauma**; ",
+  "{pct_pene} experienced **penetrating trauma**; ",
+  "{pct_burn} experienced **burns**; and ",
+  "{pct_tbi} experienced **TBI**."
 )
 
 enroll_gauge <- gauge(
@@ -244,9 +244,7 @@ enroll_gauge
 
 ```
 <br>
-`r screening_statement`
-<br><br>
-`r casemix_statement`
+`r screening_statement` `r casemix_statement`
 
 ### Cumulative Exclusions (Total: `r format(nrow(exc_df), big.mark = ",")`) {data-height=60%}
 
@@ -277,8 +275,9 @@ hc_tm_exc
 In-Hospital Phase{data-orientation=rows}
 ================================================================================
 
-Row
+Row{data-height=500}
 --------------------------------------------------------------------------------
+
 ```{r ph_prep}
 ## -- Proportion of full batteries completed -----------------------------------
 pct_surrogate_comp <-
@@ -294,11 +293,10 @@ pct_caregiver_comp <-
 valueBox(
   value = paste0(pct_surrogate_comp, "%"),
   caption =
-    "completed pre-hospital surrogate questionnaires<br><i>(all assessments except Zarit, M/B)</i>",
+    "completed pre-hospital surrogate questionnaires<br><i>(all except Zarit, M/B)</i>",
   color = ifelse(
     pct_surrogate_comp < 80, insight_col("lightred"), insight_col("lightgreen")
-  ),
-  icon = "ion-people"
+  )
 )
 
 ```
@@ -312,16 +310,60 @@ valueBox(
     "completed caregiver questionnaires<br><i>(Zarit, Memory & Behavior)</i>",
   color = ifelse(
     pct_caregiver_comp < 80, insight_col("lightred"), insight_col("lightgreen")
-  ),
-  icon = "ion-heart"
+  )
 )
 
 ```
 
-### Surrogate/Caregiver Battery Completion{width=150%}
+### Surrogate/Caregiver Battery Completion
 ```{r surrogate_pctcomp_ind}
-p_surr <- plot_asmts_comp(df = surrogate_pctcomp, ybreaks = seq(0, 1, 0.2))
+p_surr <- plot_asmts_comp(
+  df = surrogate_pctcomp, order_desc = FALSE, ybreaks = seq(0, 1, 0.2)
+) +
+  geom_vline(xintercept = 11.5, linetype = "dotted", alpha = 0.35)
+
 ggplotly(p_surr, tooltip = "text")
+
+```
+
+### Pt Attitude Detail{data-width=100%}
+
+```{r attitude_tm}
+attitude_df <- all_enrolled %>%
+  mutate(
+    attitude_pt_ever = factor(
+      as.numeric(attitude_pt_ever), levels = 0:1, labels = c("No", "Yes")
+    )
+  ) %>%
+  add_count(attitude_pt_ever) %>%
+  add_count(attitude_pt_status) %>%
+  dplyr::select(attitude_pt_ever, attitude_pt_status, n, nn) %>%
+  distinct() %>%
+  filter(!is.na(attitude_pt_ever)) %>%
+  set_names(c("attitude_pt_ever", "attitude_pt_status", "n_ever", "n_status"))
+
+tm_attitude <- treemap(
+  dtf = attitude_df,
+  index = c("attitude_pt_ever", "attitude_pt_status"),
+  vSize = "n_status",
+  type = "index",
+  title = "",
+  algorithm = "squarified",
+  palette = c("#571705", "#455705"),
+  draw = FALSE
+)
+
+hc_tm_attitude <- hctreemap(
+  tm_attitude,
+  allowDrillToNode = TRUE,
+  layoutAlgorithm = "squarified",
+  levels = list(levelIsConstant = "false"),
+  dataLabels = list(style = list(color = "white",
+                                 textOutline = "0px contrast",
+                                 fontSize = "10px"))
+)
+
+hc_tm_attitude
 
 ```
 
