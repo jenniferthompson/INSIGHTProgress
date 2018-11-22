@@ -331,25 +331,34 @@ ggplotly(p_surr, tooltip = "text")
 ```{r attitude_tm}
 attitude_df <- all_enrolled %>%
   mutate(
-    attitude_pt_ever = factor(
-      as.numeric(attitude_pt_ever), levels = 0:1, labels = c("No", "Yes")
+    attitude_pt = factor(
+      case_when(
+        attitude_pt_ever                   ~ 1,
+        attitude_pt_status == "No, missed" ~ 3,
+        is.na(attitude_pt_ever)            ~ as.numeric(NA),
+        TRUE                               ~ 2
+      ),
+      levels = 1:3,
+      labels = c("Yes", "Ineligible", "Missed")
     )
   ) %>%
-  add_count(attitude_pt_ever) %>%
+  add_count(attitude_pt) %>%
   add_count(attitude_pt_status) %>%
-  dplyr::select(attitude_pt_ever, attitude_pt_status, n, nn) %>%
+  dplyr::select(attitude_pt, attitude_pt_status, n, nn) %>%
   distinct() %>%
-  filter(!is.na(attitude_pt_ever)) %>%
-  set_names(c("attitude_pt_ever", "attitude_pt_status", "n_ever", "n_status"))
+  filter(!is.na(attitude_pt)) %>%
+  set_names(c("attitude_pt", "attitude_pt_status", "n_ever", "n_status"))
 
 tm_attitude <- treemap(
   dtf = attitude_df,
-  index = c("attitude_pt_ever", "attitude_pt_status"),
+  index = c("attitude_pt", "attitude_pt_status"),
   vSize = "n_status",
   type = "index",
   title = "",
   algorithm = "squarified",
-  palette = c("#571705", "#455705"),
+  palette = c(
+    insight_col("darkgreen"), insight_col("darkblue"), insight_col("darkred")
+  ),
   draw = FALSE
 )
 
