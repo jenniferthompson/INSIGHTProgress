@@ -315,7 +315,7 @@ valueBox(
 
 ```
 
-### Surrogate/Caregiver Battery Completion
+### Surrogate/Caregiver Battery Completion (% of Patients Not Withdrawn d/t IQCODE)
 ```{r surrogate_pctcomp_ind}
 p_surr <- plot_asmts_comp(
   df = surrogate_pctcomp, order_desc = FALSE, ybreaks = seq(0, 1, 0.2)
