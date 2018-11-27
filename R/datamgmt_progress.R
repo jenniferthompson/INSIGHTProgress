@@ -44,7 +44,7 @@ import_df <- function(rctoken){
 inhosp_df <- import_df("INSIGHT_IH_TOKEN")
 exc_df <- import_df("INSIGHT_EXC_TOKEN")
 fu_df <- import_df("INSIGHT_FU_TOKEN")
-save(inhosp_df, exc_df, fu_df, file = "testdata/testdata.Rdata")
+# save(inhosp_df, exc_df, fu_df, file = "testdata/testdata.Rdata")
 # load("testdata/testdata.Rdata")
 
 ## Rename follow-up ID variable
@@ -358,11 +358,10 @@ all_enrolled <- all_enrolled %>%
 #   )
 
 ## df for patients who *should have* had surrogate/caregiver batteries completed
-##  (note: this will eventually not include patients who withdrew early/were
-##   disqualified due to reasons like IQCODE; waiting on BP/CS to make database
-##   change to denote this)
+##  (currently, all patients *not* withdrawn due to high IQCODE; more criteria
+##  may be added)
 surrogate_pctcomp <- all_enrolled %>%
-  ## filter(...) %>%
+  filter(elig_attitude) %>%
   dplyr::select(
     one_of(surrogate_compvars),
     one_of(caregiver_compvars),
@@ -706,7 +705,7 @@ fu_long <- fu_df2 %>%
         "Eligible, but not yet assessed"
       )
     ),
-    
+
     ## Indicators for whether patient/caregiver is eligible for followup
     ##  (included in denominator) and has been assessed (included in numerator)
     fu_elig_pt = fu_status_pt %in% c(
@@ -797,7 +796,7 @@ fu_asmts <- fu_long %>%
 #       TRUE ~ stringr::str_replace(target, " in ", ", ")
 #     )
 #   )
-# 
+#
 # ## source = status after illness; target = status at 3m
 # sankey_3m <- fu_long %>%
 #   filter(
@@ -828,7 +827,7 @@ fu_asmts <- fu_long %>%
 #       TRUE ~ "Missing"
 #     )
 #   )
-# 
+#
 # ## source = status at 3m; target = status at 12m
 # sankey_12m <- fu_long %>%
 #   filter(
@@ -853,7 +852,7 @@ fu_asmts <- fu_long %>%
 #       TRUE ~ "Missing"
 #     )
 #   )
-# 
+#
 # ## Calculate final weights for each edge (# patients with each source/target combo)
 # sankey_edges <- bind_rows(sankey_hospital, sankey_3m, sankey_12m) %>%
 #   dplyr::select(-id) %>%
