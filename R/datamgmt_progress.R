@@ -646,7 +646,8 @@ fu_long <- fu_df2 %>%
     in_window = ifelse(is.na(hospdis_date), NA, enter_window <= Sys.Date()),
 
     ## Indicator for whether patient refused assessment (but didn't withdraw)
-    ## Currently relies on general questions only; checking with Julie
+    ## Currently relies on general questions only; per JV, this is an accurate
+    ## representation of whether the patient refused the entire assessment
     refused_gq = !is.na(gq_rsn) & gq_rsn == "Patient refusal",
 
     ## Followup status:
@@ -775,10 +776,15 @@ fu_asmts <- fu_long %>%
       TRUE                                     ~ fu_comp_cg
     )
   ) %>%
+  ## Only look at % of individual assessments done when overall assessment was
+  ##  attempted
+  filter(fu_comp) %>%
   group_by(redcap_event_name, asmt_type) %>%
   summarise(
     n_elig = sum(fu_comp, na.rm = TRUE),
+      ## "eligible" here means overall assessment fully or partially done
     n_comp = sum(asmt_done, na.rm = TRUE),
+      ## "completed" here means individual assessment completed
     prop_comp = mean(asmt_done, na.rm = TRUE)
   )
 
