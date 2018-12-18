@@ -281,9 +281,9 @@ Row{data-height=500}
 ```{r ph_prep}
 ## -- Proportion of full batteries completed -----------------------------------
 pct_surrogate_comp <-
-  round(mean(all_enrolled$ph_surrogate_comp, na.rm = TRUE) * 100)
+  round(mean(subset(all_enrolled, elig_attitude)$ph_surrogate_comp, na.rm = TRUE) * 100)
 pct_caregiver_comp <-
-  round(mean(all_enrolled$ph_caregiver_comp, na.rm = TRUE) * 100)
+  round(mean(subset(all_enrolled, elig_cg)$ph_caregiver_comp, na.rm = TRUE) * 100)
 
 ```
 
@@ -294,8 +294,10 @@ valueBox(
   value = paste0(pct_surrogate_comp, "%"),
   caption =
     "completed pre-hospital surrogate questionnaires<br><i>(all except Zarit, M/B)</i>",
-  color = ifelse(
-    pct_surrogate_comp < 80, insight_col("lightred"), insight_col("lightgreen")
+  color = case_when(
+    pct_surrogate_comp < 80 ~ insight_col("lightred"),
+    pct_surrogate_comp < 90 ~ insight_col("lightgold"),
+    TRUE                    ~ insight_col("lightgreen")
   )
 )
 
@@ -308,8 +310,10 @@ valueBox(
   value = paste0(pct_caregiver_comp, "%"),
   caption =
     "completed caregiver questionnaires<br><i>(Zarit, Memory & Behavior)</i>",
-  color = ifelse(
-    pct_caregiver_comp < 80, insight_col("lightred"), insight_col("lightgreen")
+  color = case_when(
+    pct_caregiver_comp < 80 ~ insight_col("lightred"),
+    pct_caregiver_comp < 90 ~ insight_col("lightgold"),
+    TRUE                    ~ insight_col("lightgreen")
   )
 )
 
@@ -497,7 +501,7 @@ fu_asmts <- fu_asmts %>%
 valueBox(
   value = 3,
   caption = paste0(
-    "month follow-up<br><br><b>Patients eligible but not yet assessed:</b><br>",
+    "month follow-up<br><br><b>Eligible, not assessed:</b><br>",
     paste(
       fu_long %>%
         filter(
@@ -566,7 +570,7 @@ ggplotly(p_3m + theme(axis.text.y = element_blank()), tooltip = "text")
 valueBox(
   value = 12,
   caption = paste0(
-    "month follow-up<br><br><b>Patients eligible but not yet assessed:</b><br>",
+    "month follow-up<br><br><b>Eligible, not assessed:</b><br>",
     paste(
       fu_long %>%
         filter(
