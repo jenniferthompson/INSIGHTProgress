@@ -291,6 +291,13 @@ all_enrolled <- all_enrolled %>%
     elig_attitude =
       !(!is.na(studywd_who) &
           studywd_who == "Study staff b/c patient scored IQCODE>3.8"),
+    ## Eligible for caregiver assessment: not withdrawn d/t IQCODE *and*
+    ##  Zarit not marked with "no [caregiver] available" (some patients don't
+    ##  have anyone that meets that definition)
+    elig_cg =
+      elig_attitude &
+      !(!is.na(zarit_comp_ph_rsn) &
+          zarit_comp_ph_rsn == "No one available that meets the caregiver definition"),
     attitude_surr = ifelse(
       !elig_attitude, NA, !is.na(attitude_comp_sur) & attitude_comp_sur == "Yes"
     ),
@@ -357,23 +364,35 @@ all_enrolled <- all_enrolled %>%
 #     )
 #   )
 
-## df for patients who *should have* had surrogate/caregiver batteries completed
+## df for patients who *should have* had surrogate batteries completed
 ##  (currently, all patients *not* withdrawn due to high IQCODE; more criteria
 ##  may be added)
 surrogate_pctcomp <- all_enrolled %>%
   filter(elig_attitude) %>%
   dplyr::select(
     one_of(surrogate_compvars),
-    one_of(caregiver_compvars),
+    # one_of(caregiver_compvars),
     attitude_pt_ever, attitude_surr
   ) %>%
   ## Get proportion complete for each assessment
-  summarise_all(mean, na.rm = TRUE) %>%
+  summarise_all(mean, na.rm = TRUE)
+
+## df for patients who *should have* had Zarit + memory/behavior completed
+##  (currently, all patients *not* withdrawn due to high IQCODE AND not marked
+##  as "no caregiver available")
+cg_pctcomp <- all_enrolled %>%
+  filter(elig_cg) %>%
+  dplyr::select(one_of(caregiver_compvars)) %>%
+  ## Get proportion complete for each assessment
+  summarise_all(mean, na.rm = TRUE)
+
+## Combine into one dataset for plot
+surrogate_pctcomp <- bind_cols(surrogate_pctcomp, cg_pctcomp) %>%
   ## Reshape to work with plot_asmts_comp()
   gather(key = asmt_type, value = prop_comp) %>%
+  ## Sort in descending order of % completed
   arrange(str_detect(asmt_type, "^attitude"), desc(prop_comp)) %>%
   mutate(
-    ## Sort in descending order of % completed
     x_sorted = 1:n(),
     ## Clearer battery names
     asmt_type = case_when(
